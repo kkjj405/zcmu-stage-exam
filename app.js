@@ -1033,11 +1033,16 @@
       '<div class="muted" style="margin-top:10px">已做 ' + T.done + ' 题 · 正确率 ' +
       pct(T.right, T.right + T.wrong) + '% · 错题 ' + T.wrong + '</div></div>' +
       '<div class="h2">版本与更新</div><div class="card">' +
-      '<div class="muted" id="mVerLine" style="margin-bottom:8px">当前版本 v' + APP_VERSION +
+      '<div class="muted" id="mVerLine" style="margin-bottom:6px">当前版本 v' + APP_VERSION +
       ' · 题库 ' + (window.BANKS.total || 0) + ' 题</div>' +
+      '<div class="muted" id="mStoreLine" style="margin-bottom:8px">存储状态：读取中…</div>' +
       '<button class="btn ghost sm" id="mCheckUpdate">检查更新</button></div>' +
-      '<div class="h2">数据</div><div class="card">' +
-      '<button class="btn ghost sm" id="mExport" style="margin-bottom:8px">导出做题记录</button>' +
+      '<div class="h2">数据备份</div><div class="card">' +
+      '<div class="muted" style="margin-bottom:8px">做题记录只存在这台设备的浏览器里。' +
+      '无痕模式、清理浏览数据、换浏览器都会让它消失 —— 建议定期导出备份，' +
+      '换设备时用「导入做题记录」恢复。</div>' +
+      '<button class="btn ghost sm" id="mExport" style="margin-bottom:8px">导出做题记录（.json 文件）</button>' +
+      '<button class="btn ghost sm" id="mImport" style="margin-bottom:8px">导入做题记录</button>' +
       '<button class="btn ghost sm" id="mReset">清空全部做题记录</button></div>' +
       '<div class="h2">关于</div><div class="card">' +
       '<div class="muted">题库来源：浙江中医药大学考易学生练习端，按正常练习流程逐题读屏采集（非接口抓取）。</div>' +
@@ -1049,17 +1054,14 @@
   }
   function bindMe() {
     if ($('mCheckUpdate')) $('mCheckUpdate').onclick = checkUpdate;
-    if ($('mExport')) $('mExport').onclick = function () {
-      var data = {};
-      allKeys().forEach(function (k) {
-        if (k.indexOf('rec:') === 0 || k.indexOf('fav:') === 0 || k.indexOf('note:') === 0) data[k] = lsGet(k, null);
+    if ($('mExport')) $('mExport').onclick = downloadBackup;
+    if ($('mImport')) $('mImport').onclick = openImport;
+    if ($('mStoreLine')) {
+      storageLabel(function (t) {
+        var el = $('mStoreLine');
+        if (el) el.textContent = '存储状态：' + t;
       });
-      var txt = JSON.stringify({ app: 'ykt', v: 1, at: new Date().toISOString(), data: data });
-      dialog('<h3>做题记录</h3><p style="max-height:40vh;overflow:auto;font-size:11px;word-break:break-all">' +
-        esc(txt.slice(0, 4000)) + (txt.length > 4000 ? '\n…（共 ' + txt.length + ' 字符）' : '') + '</p>' +
-        '<div class="acts"><button class="btn" id="dClose2">关闭</button></div>');
-      $('dClose2').onclick = closeDlg;
-    };
+    }
     if ($('mReset')) $('mReset').onclick = function () {
       dialog('<h3>清空做题记录</h3><p>将删除所有作答、错题、收藏与统计记录，题库本身不受影响。确定吗？</p>' +
         '<div class="acts"><button class="btn ghost" id="dNo">取消</button>' +
@@ -1074,6 +1076,97 @@
         kill.forEach(lsDel);
         closeDlg(); toast('已清空'); render();
       };
+    };
+  }
+
+  /* ---------------- 存储持久化 / 备份恢复 ---------------- */
+  /* 浏览器（Chrome/Edge/Safari）默认把站点数据当“尽力而为”：
+     无痕模式、清理浏览数据、存储紧张时都可能被清掉。
+     这里申请“持久化存储”，并要求用户把站点装成应用（桌面/主屏），可显著降低被清风险。 */
+  function ensurePersistent() {
+    try {
+      if (window.NativeBridge) return;                 // 原生壳：数据在 App 私有目录，不必申请
+      if (!navigator.storage || !navigator.storage.persist) return;
+      navigator.storage.persisted().then(function (p) {
+        if (!p) navigator.storage.persist();
+      }).catch(function () { });
+    } catch (e) { }
+  }
+  function storageLabel(cb) {
+    try {
+      if (window.NativeBridge) return cb('App 私有目录（持久）');
+      if (!navigator.storage || !navigator.storage.persisted) return cb('浏览器存储');
+      navigator.storage.persisted().then(function (p) {
+        cb(p ? '已持久化（不会被自动清理）' : '普通存储（建议定期导出备份）');
+      }).catch(function () { cb('浏览器存储'); });
+    } catch (e) { cb('浏览器存储'); }
+  }
+  function collectBackup() {
+    var data = {};
+    allKeys().forEach(function (k) {
+      if (k.indexOf('rec:') === 0 || k.indexOf('fav:') === 0 || k.indexOf('note:') === 0) {
+        data[k] = lsGet(k, null);
+      }
+    });
+    return { app: 'zcmu-stage-exam', v: 1, ver: APP_VERSION, at: new Date().toISOString(), data: data };
+  }
+  function downloadBackup() {
+    var txt = JSON.stringify(collectBackup());
+    var name = 'zcmu阶段考-做题记录-' + new Date().toISOString().slice(0, 10) + '.json';
+    try {
+      var blob = new Blob([txt], { type: 'application/json;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click();
+      setTimeout(function () {
+        try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) { }
+      }, 2000);
+      toast('已导出：' + name);
+    } catch (e) {
+      dialog('<h3>导出做题记录</h3><p>浏览器不支持直接下载文件，下面是记录内容，' +
+        '请长按/全选复制后保存。</p><textarea readonly>' + esc(txt) + '</textarea>' +
+        '<div class="acts"><button class="btn" id="exClose">关闭</button></div>');
+      if ($('exClose')) $('exClose').onclick = closeDlg;
+    }
+  }
+  function applyBackup(text) {
+    var o;
+    try { o = JSON.parse(text); } catch (e) { return { ok: false, msg: '内容不是有效的 JSON' }; }
+    var d = (o && o.data) ? o.data : o;
+    if (!d || typeof d !== 'object') return { ok: false, msg: '文件里没有做题记录' };
+    var n = 0;
+    Object.keys(d).forEach(function (k) {
+      if (!/^(rec|fav|note):/.test(k)) return;
+      try { localStorage.setItem(k, JSON.stringify(d[k])); n++; } catch (e) { }
+    });
+    return n > 0 ? { ok: true, n: n, msg: '已导入 ' + n + ' 组记录' } : { ok: false, msg: '没有可导入的记录' };
+  }
+  function openImport() {
+    dialog('<h3>导入做题记录</h3>' +
+      '<p class="muted" style="margin-bottom:8px">选择之前导出的 .json 文件；或把内容粘贴到下面再点导入。' +
+      '导入是合并覆盖，不会删除现有记录。</p>' +
+      '<input type="file" id="impFile" accept=".json,application/json" ' +
+      'style="margin-bottom:8px;font-size:12px;max-width:100%">' +
+      '<textarea id="impTa" placeholder="把导出的 JSON 内容粘贴到这里"></textarea>' +
+      '<div class="acts"><button class="btn ghost" id="impNo">取消</button>' +
+      '<button class="btn" id="impYes">导入</button></div>');
+    var fi = $('impFile');
+    if (fi) fi.onchange = function () {
+      var f = fi.files && fi.files[0];
+      if (!f) return;
+      try {
+        var rd = new FileReader();
+        rd.onload = function () { $('impTa').value = String(rd.result || ''); toast('已读取文件，点「导入」确认'); };
+        rd.readAsText(f, 'utf-8');
+      } catch (e) { toast('读取文件失败：' + e.message); }
+    };
+    $('impNo').onclick = closeDlg;
+    $('impYes').onclick = function () {
+      var r = applyBackup(($('impTa') || {}).value || '');
+      if (!r.ok) { toast(r.msg); return; }
+      closeDlg(); render();
+      toast(r.msg + '，做题记录已恢复');
     };
   }
 
@@ -1208,6 +1301,7 @@
 
   /* ---------------- 启动 ---------------- */
   function boot() {
+    ensurePersistent();
     try {
       if (localStorage.getItem('migrated_v11') === '1') {
         localStorage.removeItem('migrated_v11');
