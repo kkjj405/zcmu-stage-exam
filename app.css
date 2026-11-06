@@ -282,3 +282,14 @@ button{font-family:inherit;}
   background:#eef8f2;border:1px dashed #b7e0c9;border-radius:10px;
   font-size:13px;line-height:1.6;color:#1d6b45;}
 .hint svg,.hint .hint-ic{width:16px;height:16px;flex:0 0 16px;color:#0a9a57;}
+
+/* 批量重做弹窗：范围选择 */
+.brsec{font-size:12px;color:var(--tx3);margin:10px 0 6px;letter-spacing:.3px;}
+.brchips .chip{padding:7px 11px;font-size:12.5px;}
+.brrange{display:flex;align-items:center;gap:8px;}
+.brnum{width:78px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+  font-size:14px;text-align:center;font-variant-numeric:tabular-nums;background:#fff;color:var(--tx);}
+.brnum:focus{outline:2px solid var(--green-bg);border-color:var(--green);}
+.brprev{margin:12px 0 2px;padding:10px 12px;background:#f4f6f9;border-radius:10px;
+  font-size:13px;line-height:1.6;color:var(--tx2);}
+#dlg .box .btn:disabled{opacity:.45;}

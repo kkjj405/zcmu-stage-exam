@@ -576,31 +576,99 @@
     };
   }
 
-  /* 批量重做：把当前答题卡范围内的作答状态全部清空（历史统计保留） */
+  /* 批量重做：让用户自己选范围（状态筛选 + 题号区间），清空作答状态但保留历史统计 */
   function batchRedo() {
-    var list = filteredIdx();
-    if (!list.length) { toast('当前答题卡没有题目'); return; }
-    var touched = 0;
-    list.forEach(function (i) { if (S.rec[i]) touched++; });
+    var all = filteredIdx();
+    if (!all.length) { toast('当前答题卡没有题目'); return; }
     var scope = filterLabel() || '全部题目';
-    dialog('<h3>批量重做</h3>' +
-      '<p>范围：<b>' + esc(scope) + '</b>（共 ' + list.length + ' 题，其中 ' + touched + ' 题有作答记录）</p>' +
-      '<p>将把这些题的作答状态清空 —— 答题卡回到「未做」，可以重新作答。<br>' +
-      '<b>历史作答次数与对错统计会保留。</b></p>' +
-      '<div class="acts"><button class="btn ghost" id="brNo">取消</button>' +
-      '<button class="btn" id="brYes">确定重做</button></div>');
-    $('brNo').onclick = closeDlg;
-    $('brYes').onclick = function () {
-      var n = 0;
-      list.forEach(function (i) {
-        var cur = S.rec[i];
-        if (!cur) return;                       // 没作答过的题不用动
-        S.rec[i] = { c: -1, s: ST.NONE, n: cur.n || 0, r: cur.r || 0, w: cur.w || 0 };
-        n++;
+    var mode = 'all';
+    var MODES = [
+      { k: 'all', t: '全部题目' },
+      { k: 'wrong', t: '只答错的' },
+      { k: 'right', t: '只答对的' },
+      { k: 'skip', t: '只已掌握的' },
+      { k: 'done', t: '只做过的' }
+    ];
+
+    function bounds() {
+      var f = parseInt($('brFrom') ? $('brFrom').value : '', 10);
+      var t = parseInt($('brTo') ? $('brTo').value : '', 10);
+      if (isNaN(f) || f < 1) f = 1;
+      if (isNaN(t) || t > all.length) t = all.length;
+      return [f, t];
+    }
+    function pick() {
+      var b = bounds(), f = b[0], t = b[1], out = [];
+      all.forEach(function (i, pos) {
+        var num = pos + 1;
+        if (num < f || num > t) return;
+        var r = S.rec[i], st = r ? r.s : ST.NONE;
+        if (mode === 'wrong' && st !== ST.WRONG) return;
+        if (mode === 'right' && st !== ST.RIGHT) return;
+        if (mode === 'skip' && st !== ST.SKIP) return;
+        if (mode === 'done' && !(st === ST.RIGHT || st === ST.WRONG || st === ST.SKIP || st === ST.PENDING)) return;
+        out.push(i);
       });
-      persist(); closeDlg(); render();
-      toast(n ? ('已批量重做 ' + n + ' 道题（历史统计保留）') : '这些题还没有作答记录');
-    };
+      return out;
+    }
+    function refresh() {
+      var n = pick().length;
+      var el = $('brPrev');
+      if (el) {
+        el.innerHTML = '将重做 <b style="color:#07a35a">' + n + '</b> 道题' +
+          '（当前答题卡「' + esc(scope) + '」共 ' + all.length + ' 题）' +
+          (n ? '' : '<br><span style="color:#e5484d">当前选择范围内没有可重做的题</span>');
+      }
+      var ok = $('brYes');
+      if (ok) ok.disabled = (n === 0);
+    }
+    function renderDlg() {
+      dialog('<h3>批量重做</h3>' +
+        '<p class="muted" style="margin-bottom:8px">先选范围：可按作答状态筛选，也可指定题号区间。' +
+        '清空后答题卡回到「未做」可重新作答，<b>历史作答次数与对错统计会保留</b>。</p>' +
+        '<div class="brsec">按状态</div>' +
+        '<div class="chips brchips" id="brModes">' +
+        MODES.map(function (m) {
+          return '<button class="chip' + (mode === m.k ? ' on' : '') + '" data-brmode="' + m.k + '">' + m.t + '</button>';
+        }).join('') + '</div>' +
+        '<div class="brsec">按题号区间（当前答题卡的第几题到第几题）</div>' +
+        '<div class="brrange">' +
+        '<input id="brFrom" class="brnum" type="number" inputmode="numeric" min="1" max="' + all.length + '" value="1">' +
+        '<span class="muted">到</span>' +
+        '<input id="brTo" class="brnum" type="number" inputmode="numeric" min="1" max="' + all.length + '" value="' + all.length + '">' +
+        '<span class="muted">（共 ' + all.length + ' 题）</span></div>' +
+        '<div class="brprev" id="brPrev"></div>' +
+        '<div class="acts"><button class="btn ghost" id="brNo">取消</button>' +
+        '<button class="btn" id="brYes">确定重做</button></div>');
+
+      Array.prototype.forEach.call($('main') ? $('dlg').querySelectorAll('[data-brmode]') : [], function (b) {
+        b.onclick = function () {
+          mode = b.dataset.brmode;
+          Array.prototype.forEach.call($('dlg').querySelectorAll('[data-brmode]'), function (x) {
+            x.classList.toggle('on', x === b);
+          });
+          refresh();
+        };
+      });
+      if ($('brFrom')) $('brFrom').oninput = refresh;
+      if ($('brTo')) $('brTo').oninput = refresh;
+      $('brNo').onclick = closeDlg;
+      $('brYes').onclick = function () {
+        var list = pick();
+        if (!list.length) { toast('当前选择范围内没有可重做的题'); return; }
+        var n = 0;
+        list.forEach(function (i) {
+          var cur = S.rec[i];
+          if (!cur) return;                       // 没作答过的题不用动
+          S.rec[i] = { c: -1, s: ST.NONE, n: cur.n || 0, r: cur.r || 0, w: cur.w || 0 };
+          n++;
+        });
+        persist(); closeDlg(); render();
+        toast(n ? ('已重做 ' + n + ' 道题（历史统计保留）') : '所选题目还没有作答记录');
+      };
+      refresh();
+    }
+    renderDlg();
   }
 
   /* 错题本专用：把本题从错题本移除（历史统计保留，答题卡回到未做） */
