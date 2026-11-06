@@ -13,6 +13,8 @@
   ];
   var ST = { NONE: 0, RIGHT: 1, WRONG: 2, SKIP: 3, PENDING: 4 };
   var LETTER = 'ABCDE';
+  var APP_VERSION = '1.1';          // 与 APK/manifest 保持一致
+  var WEB_VERSION_KEY = 'webver';   // 记录本地 web 资源版本（热更新用）
   var QK = 'ykt-state-v1';
 
   /* 内联 SVG 图标（离线、清晰；不用 emoji 以免在不同设备上发虚） */
@@ -297,8 +299,8 @@
         return '<button class="mode' + (S.mode === m.k ? ' on' : '') + '" data-mode="' + m.k + '">' +
           '<b>' + m.name + '</b><span>' + m.desc + '</span></button>';
       }).join('') + '</div></div>';
-    html += '<button class="btn" id="btnStart">开始练习</button>' +
-      '<button class="btn ghost sm" id="btnGridOnly" style="margin-top:8px">只看答题卡</button>';
+    html += '<div class="hint">' + ICON.pen.replace('<svg', '<svg class="hint-ic"') +
+      '点击题型即可开始练习（上方可选练习 / 快刷 / 测试 / 背题模式）</div>';
     return html;
   }
 
@@ -574,6 +576,33 @@
     };
   }
 
+  /* 批量重做：把当前答题卡范围内的作答状态全部清空（历史统计保留） */
+  function batchRedo() {
+    var list = filteredIdx();
+    if (!list.length) { toast('当前答题卡没有题目'); return; }
+    var touched = 0;
+    list.forEach(function (i) { if (S.rec[i]) touched++; });
+    var scope = filterLabel() || '全部题目';
+    dialog('<h3>批量重做</h3>' +
+      '<p>范围：<b>' + esc(scope) + '</b>（共 ' + list.length + ' 题，其中 ' + touched + ' 题有作答记录）</p>' +
+      '<p>将把这些题的作答状态清空 —— 答题卡回到「未做」，可以重新作答。<br>' +
+      '<b>历史作答次数与对错统计会保留。</b></p>' +
+      '<div class="acts"><button class="btn ghost" id="brNo">取消</button>' +
+      '<button class="btn" id="brYes">确定重做</button></div>');
+    $('brNo').onclick = closeDlg;
+    $('brYes').onclick = function () {
+      var n = 0;
+      list.forEach(function (i) {
+        var cur = S.rec[i];
+        if (!cur) return;                       // 没作答过的题不用动
+        S.rec[i] = { c: -1, s: ST.NONE, n: cur.n || 0, r: cur.r || 0, w: cur.w || 0 };
+        n++;
+      });
+      persist(); closeDlg(); render();
+      toast(n ? ('已批量重做 ' + n + ' 道题（历史统计保留）') : '这些题还没有作答记录');
+    };
+  }
+
   /* 错题本专用：把本题从错题本移除（历史统计保留，答题卡回到未做） */
   function removeWrongQuestion() {
     var r = recOf(S.idx);
@@ -671,6 +700,11 @@
   function viewGrid() {
     /* 过滤模式（错题/收藏/笔记）下，答题卡只展示该集合的题 —— 即“独立的答题卡” */
     var list = filteredIdx();
+    var scope = filterLabel() || '全部题目';
+    var topbar = '<div class="gbar">' +
+      '<button class="btn ghost sm gbar-btn" id="gBatchRedo">批量重做</button>' +
+      '<button class="btn sm gbar-btn" id="gStart">开始答题</button>' +
+      '</div>';
     var st = { done: 0, right: 0, wrong: 0, skip: 0, pending: 0 };
     var cells = '';
     for (var n = 0; n < list.length; n++) {
@@ -687,10 +721,10 @@
     }
     var fl = filterLabel();
     if (!list.length) {
-      return '<div class="gridwrap">' + (fl ? '<div class="ghead">' + esc(fl) + '</div>' : '') +
+      return topbar + '<div class="gridwrap">' + (fl ? '<div class="ghead">' + esc(fl) + '</div>' : '') +
         '<div class="empty">这个集合里还没有题目</div></div>';
     }
-    return '<div class="gridwrap">' +
+    return topbar + '<div class="gridwrap">' +
       (fl ? '<div class="ghead">' + esc(fl) + ' · 共 ' + list.length + ' 题</div>' : '') +
       '<div class="gstats">' +
       '<div class="gstat"><b>' + st.done + '</b><span>已做</span></div>' +
@@ -710,6 +744,19 @@
       '</div></div>';
   }
   function bindGrid() {
+    if ($('gBatchRedo')) $('gBatchRedo').onclick = batchRedo;
+    if ($('gStart')) $('gStart').onclick = function () {
+      var list = filteredIdx();
+      if (!list.length) { toast('这个集合里还没有题目'); return; }
+      if (list.indexOf(S.idx) < 0) S.idx = list[0];
+      S.noteOpen = false; S.noteDraft = null;
+      /* 从答题卡进入题目时，要像 startQuiz 一样初始化“测试模式”状态，
+         否则测试模式下点选项会被当成“已交卷”而拒绝作答 */
+      if (S.mode === 2) { S.testing = true; S.t0 = Date.now(); } else { S.testing = false; }
+      S.stack.pop();                 // 用答题页替换答题卡（返回时回到题型页）
+      S.view = 'quiz';
+      render();
+    };
     Array.prototype.forEach.call($('main').querySelectorAll('.gcell'), function (b) {
       b.onclick = function () {
         if (S.noteOpen) { commitDraft(); S.noteOpen = false; }
@@ -982,9 +1029,13 @@
     return '<div class="card"><div class="row"><div class="grow">' +
       '<div style="font-size:17px;font-weight:600">zcmu阶段考 · 医学题库</div>' +
       '<div class="muted">离线刷题 · 共 ' + (window.BANKS.total || 0) + ' 题</div></div>' +
-      '<span class="chip on">v1.0</span></div>' +
+      '<span class="chip on">v' + APP_VERSION + '</span></div>' +
       '<div class="muted" style="margin-top:10px">已做 ' + T.done + ' 题 · 正确率 ' +
       pct(T.right, T.right + T.wrong) + '% · 错题 ' + T.wrong + '</div></div>' +
+      '<div class="h2">版本与更新</div><div class="card">' +
+      '<div class="muted" id="mVerLine" style="margin-bottom:8px">当前版本 v' + APP_VERSION +
+      ' · 题库 ' + (window.BANKS.total || 0) + ' 题</div>' +
+      '<button class="btn ghost sm" id="mCheckUpdate">检查更新</button></div>' +
       '<div class="h2">数据</div><div class="card">' +
       '<button class="btn ghost sm" id="mExport" style="margin-bottom:8px">导出做题记录</button>' +
       '<button class="btn ghost sm" id="mReset">清空全部做题记录</button></div>' +
@@ -997,6 +1048,7 @@
       '</div>';
   }
   function bindMe() {
+    if ($('mCheckUpdate')) $('mCheckUpdate').onclick = checkUpdate;
     if ($('mExport')) $('mExport').onclick = function () {
       var data = {};
       allKeys().forEach(function (k) {
@@ -1024,6 +1076,48 @@
       };
     };
   }
+
+  /* ---------------- 更新检查 ---------------- */
+  /* 安卓壳注入 window.NativeBridge（见 MainActivity）：
+       NativeBridge.getVersionInfo() -> '{"apk":"1.1","web":"1.1"}'
+       NativeBridge.checkUpdate()    -> 异步，完成后调用 window.__onUpdateResult(json)
+     网页版（PWA）没有该对象，由 Service Worker 自动更新。 */
+  function checkUpdate() {
+    if (!window.NativeBridge || !window.NativeBridge.checkUpdate) {
+      dialog('<h3>检查更新</h3><p>当前为网页版（PWA）：新版本会在你下次打开时自动生效，' +
+        '无需手动更新。\n\n如果打开的还是旧界面，下拉刷新或从桌面图标重新打开一次即可。</p>' +
+        '<div class="acts"><button class="btn" id="upClose">知道了</button></div>');
+      $('upClose').onclick = closeDlg;
+      return;
+    }
+    toast('正在检查更新…');
+    try { window.NativeBridge.checkUpdate(); } catch (e) { toast('检查失败：' + e.message); }
+  }
+
+  /* 安卓壳回调 */
+  window.__onUpdateResult = function (jsonStr) {
+    var r = {};
+    try { r = JSON.parse(jsonStr); } catch (e) { r = { ok: false, msg: '返回数据解析失败' }; }
+    if (r.msg && !r.updated) { toast(r.msg); }
+    if (!r.ok) {
+      dialog('<h3>检查更新</h3><p>' + esc(r.msg || '检查失败，请稍后再试') + '</p>' +
+        '<div class="acts"><button class="btn" id="upClose2">关闭</button></div>');
+      if ($('upClose2')) $('upClose2').onclick = closeDlg;
+      return;
+    }
+    if (r.updated) {
+      dialog('<h3>发现新版本</h3><p>已更新到 v' + esc(r.web || '') + '（APK v' + esc(r.apk || '') + '）。\n' +
+        '题库与做题记录都已保留，重启应用即可生效。</p>' +
+        '<div class="acts"><button class="btn" id="upNow">立即重启</button></div>');
+      if ($('upNow')) $('upNow').onclick = function () {
+        try { window.NativeBridge.reload(); } catch (e) { location.reload(); }
+      };
+    } else {
+      dialog('<h3>检查更新</h3><p>当前已是最新版本（v' + esc(r.web || APP_VERSION) + '）。</p>' +
+        '<div class="acts"><button class="btn" id="upClose3">关闭</button></div>');
+      if ($('upClose3')) $('upClose3').onclick = closeDlg;
+    }
+  };
 
   /* ---------------- 渲染入口 ---------------- */
   function render() {
@@ -1075,7 +1169,7 @@
     Array.prototype.forEach.call($('main').querySelectorAll('[data-type]'), function (b) {
       b.onclick = function () {
         var te = S.course.types.filter(function (t) { return t.t === b.dataset.type; })[0];
-        startQuiz(te, 'all');
+        openGridFor(te);          // 题型 → 先进答题卡
       };
     });
     Array.prototype.forEach.call($('main').querySelectorAll('[data-mode]'), function (b) {
@@ -1086,24 +1180,23 @@
         lsSet('mode', S.mode);
       };
     });
-    if ($('btnStart')) $('btnStart').onclick = function () {
-      var te = S.course.types[0];
-      if (!te) return toast('本课程暂无题目');
-      startQuiz(te, 'all');
-    };
-    if ($('btnGridOnly')) $('btnGridOnly').onclick = function () {
-      var te = S.course.types[0];
-      if (!te) return;
-      S.type = te.t; S.typeEntry = te;
-      ensureShard(te).then(function (qs) {
-        S.qs = qs;
-        S.rec = lsGet(recKey(S.bank.id, S.course.no, te.t), {}) || {};
-        S.fav = lsGet(favKey(S.bank.id, S.course.no, te.t), {}) || {};
-        S.notes = lsGet(noteKey(S.bank.id, S.course.no, te.t), {}) || {};
-        S.idx = 0;
-        go('grid');
-      });
-    };
+  }
+
+  /* 打开某个题型的答题卡（不直接进题目） */
+  function openGridFor(te) {
+    S.type = te.t; S.typeEntry = te;
+    var b = S.bank, c = S.course;
+    ensureShard(te).then(function (qs) {
+      S.qs = qs;
+      S.rec = lsGet(recKey(b.id, c.no, te.t), {}) || {};
+      S.fav = lsGet(favKey(b.id, c.no, te.t), {}) || {};
+      S.notes = lsGet(noteKey(b.id, c.no, te.t), {}) || {};
+      S.noteOpen = false; S.noteDraft = null;
+      S.filter = 'all';
+      S.testing = false;
+      S.idx = lsGet(lastKey(b.id, c.no, te.t), 0) || 0;
+      go('grid');
+    }).catch(function (e) { toast(e.message); });
   }
 
   /* ---------------- Android 返回键 ---------------- */
@@ -1115,6 +1208,12 @@
 
   /* ---------------- 启动 ---------------- */
   function boot() {
+    try {
+      if (localStorage.getItem('migrated_v11') === '1') {
+        localStorage.removeItem('migrated_v11');
+        setTimeout(function () { toast('已升级到 v1.1，做题记录已保留'); }, 700);
+      }
+    } catch (e) { }
     // 恢复上次模式
     var m = lsGet('mode', 0);
     if (typeof m === 'number' && m >= 0 && m <= 3) S.mode = m;
@@ -1124,5 +1223,41 @@
     }
     render();
   }
+  /* ---------------- 安卓壳：1.0 记录迁移 / 热更新 ---------------- */
+  (function androidShellInit() {
+    var nb = window.NativeBridge;
+    if (!nb) return;
+    /* 新路径页面：把 1.0 旧路径下导出的记录导入回来 */
+    try {
+      if (nb.takeLegacy) {
+        var raw = nb.takeLegacy();
+        if (raw && raw !== '{}') {
+          var d = JSON.parse(raw), n = 0;
+          for (var k in d) {
+            if (!Object.prototype.hasOwnProperty.call(d, k)) continue;
+            try { localStorage.setItem(k, d[k]); n++; } catch (e) { }
+          }
+          if (n) {
+            try { localStorage.setItem('migrated_v11', '1'); } catch (e) { }
+            location.reload();
+            return;
+          }
+        }
+      }
+    } catch (e) { }
+    /* 老路径（assets）首次启动：导出记录 → 复制资源 → 重新加载 */
+    try {
+      if (nb.needsMigrate && nb.needsMigrate()) {
+        var dump = {};
+        for (var i = 0; i < localStorage.length; i++) {
+          var kk = localStorage.key(i);
+          dump[kk] = localStorage.getItem(kk);
+        }
+        nb.saveLegacy(JSON.stringify(dump));
+        if (nb.doMigrate()) { nb.reload(); }
+      }
+    } catch (e) { }
+  })();
+
   window.addEventListener('load', boot);
 })();
