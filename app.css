@@ -293,3 +293,22 @@ button{font-family:inherit;}
 .brprev{margin:12px 0 2px;padding:10px 12px;background:#f4f6f9;border-radius:10px;
   font-size:13px;line-height:1.6;color:var(--tx2);}
 #dlg .box .btn:disabled{opacity:.45;}
+
+/* 答案解析正文 */
+.expbox{margin-top:10px;padding:11px 12px;background:#f2f7fb;border:1px solid #dbe7f1;border-radius:10px;}
+.expbox .exph{font-size:12px;color:#3d76a8;font-weight:700;letter-spacing:.4px;margin-bottom:5px;}
+.expbox .expt{font-size:14px;line-height:1.75;color:#2c4152;white-space:pre-wrap;word-break:break-word;}
+
+/* 首页公告按钮（点击在原地展开，不是弹窗） */
+.annbar{margin-bottom:12px;}
+.annbtn{width:100%;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);
+  border-radius:12px;padding:11px 14px;font-size:14px;color:var(--tx);text-align:left;}
+.annbtn svg{width:17px;height:17px;flex:0 0 17px;color:#d98b00;}
+.annbtn span{flex:1;min-width:0;font-weight:600;}
+.annver{font-style:normal;font-size:11px;font-weight:700;color:#fff;background:#e5484d;
+  border-radius:999px;padding:2px 7px;}
+.annarrow{font-style:normal;color:var(--tx3);font-size:18px;transition:transform .2s;}
+.annarrow.open{transform:rotate(90deg);}
+.annpanel{margin-top:8px;background:#fffdf5;border:1px solid #ffe3b8;border-radius:12px;padding:12px 14px;}
+.annitem{font-size:13.5px;line-height:1.75;color:#4a3c22;}
+.annitem b{color:#a86800;}

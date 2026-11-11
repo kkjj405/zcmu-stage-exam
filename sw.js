@@ -1,5 +1,5 @@
 /* zcmu阶段考 · Service Worker（离线优先） */
-const VER = 'zcmu-stage-exam-v2';
+const VER = 'zcmu-stage-exam-v3';
 const ASSETS = [
   "./app.css",
   "./app.js",

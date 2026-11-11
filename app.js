@@ -13,7 +13,7 @@
   ];
   var ST = { NONE: 0, RIGHT: 1, WRONG: 2, SKIP: 3, PENDING: 4 };
   var LETTER = 'ABCDE';
-  var APP_VERSION = '1.1';          // 与 APK/manifest 保持一致
+  var APP_VERSION = '1.2';          // 与 APK/manifest 保持一致
   var WEB_VERSION_KEY = 'webver';   // 记录本地 web 资源版本（热更新用）
   var QK = 'ykt-state-v1';
 
@@ -60,7 +60,7 @@
     stack: [],
     bank: null, course: null, type: null, typeEntry: null,
     mode: 0, idx: 0, qs: [], rec: {}, fav: {}, notes: {},
-    noteOpen: false, noteDraft: null,
+    noteOpen: false, noteDraft: null, annOpen: false,
     search: { q: '', scope: 'stem', bank: 'all', hits: [], busy: false, searched: false },
     filter: 'all',       // all | wrong | fav
     testing: false, t0: 0,
@@ -234,7 +234,18 @@
 
   function viewBanks() {
     var banks = window.BANKS.banks || [];
-    var html = noticeCard() +
+    var ANN = [
+      { d: '2026.11.12', t: 'v1.2', c: '为每道题添加了解析' }
+    ];
+    var annBar = '<div class="annbar">' +
+      '<button class="annbtn" id="annBtn">' + ICON.bell + '<span>公告</span>' +
+      '<em class="annver">1.2</em><i class="annarrow' + (S.annOpen ? ' open' : '') + '">›</i></button>' +
+      (S.annOpen ? '<div class="annpanel">' + ANN.map(function (a) {
+        return '<div class="annitem"><b>' + a.d + ' 更新' + a.t + '版本：</b>' + esc(a.c) + '</div>';
+      }).join('') + '</div>' : '') +
+      '</div>';
+
+    var html = noticeCard() + annBar +
       '<div class="search-entry" id="goSearch">' + ICON.search +
       '<span>搜索题目（按题干 / 按选项）</span><em>›</em></div>' +
       '<div class="h2">选择题库</div>';
@@ -408,6 +419,8 @@
     if (revealed) {
       html += '<div class="explain"><div class="h">答案解析</div>' +
         '<div class="ans">正确答案：' + LETTER[q.a] + '. ' + esc(q.o[q.a]) + '</div>' +
+        '<div class="expbox"><div class="exph">解析</div><div class="expt">' +
+        esc((q.e && String(q.e).trim()) ? q.e : '官方题库缺失图片') + '</div></div>' +
         (r && r.s === ST.WRONG ? '<div class="meta" style="color:' + '#e5484d' + '">你的答案：' + LETTER[r.c] + '. ' + esc(q.o[r.c]) + '</div>' : '') +
         '<div class="meta">' + esc(S.course.name) + ' · ' + S.type + '型题 · 题库内第 ' + (S.idx + 1) + ' 题</div>' +
         '</div>';
@@ -1309,6 +1322,7 @@
   }
 
   function bindBanks() {
+    if ($('annBtn')) $('annBtn').onclick = function () { S.annOpen = !S.annOpen; render(); };
     if ($('goSearch')) $('goSearch').onclick = function () { go('search'); };
     Array.prototype.forEach.call($('main').querySelectorAll('[data-bank]'), function (b) {
       b.onclick = function () {
