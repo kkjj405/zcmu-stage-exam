@@ -13,7 +13,7 @@
   ];
   var ST = { NONE: 0, RIGHT: 1, WRONG: 2, SKIP: 3, PENDING: 4 };
   var LETTER = 'ABCDE';
-  var APP_VERSION = '1.2';          // 与 APK/manifest 保持一致
+  var APP_VERSION = '1.2.1';          // 与 APK/manifest 保持一致
   var WEB_VERSION_KEY = 'webver';   // 记录本地 web 资源版本（热更新用）
   var QK = 'ykt-state-v1';
 
@@ -235,13 +235,14 @@
   function viewBanks() {
     var banks = window.BANKS.banks || [];
     var ANN = [
-      { d: '2026.11.12', t: 'v1.2', c: '为每道题添加了解析' }
+      { d: '2026.11.16', t: '1.2.1更新：优化了部分解析内容' },
+      { d: '2026.11.12', t: '1.2更新：为每道题添加了解析' }
     ];
     var annBar = '<div class="annbar">' +
       '<button class="annbtn" id="annBtn">' + ICON.bell + '<span>公告</span>' +
-      '<em class="annver">1.2</em><i class="annarrow' + (S.annOpen ? ' open' : '') + '">›</i></button>' +
+      '<em class="annver">1.2.1</em><i class="annarrow' + (S.annOpen ? ' open' : '') + '">›</i></button>' +
       (S.annOpen ? '<div class="annpanel">' + ANN.map(function (a) {
-        return '<div class="annitem"><b>' + a.d + ' 更新' + a.t + '版本：</b>' + esc(a.c) + '</div>';
+        return '<div class="annitem"><b>' + a.d + '</b>　' + esc(a.t) + '</div>';
       }).join('') + '</div>' : '') +
       '</div>';
 
