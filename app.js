@@ -13,7 +13,7 @@
   ];
   var ST = { NONE: 0, RIGHT: 1, WRONG: 2, SKIP: 3, PENDING: 4 };
   var LETTER = 'ABCDE';
-  var APP_VERSION = '1.2.1';          // 与 APK/manifest 保持一致
+  var APP_VERSION = '1.2.2';          // 与 APK/manifest 保持一致
   var WEB_VERSION_KEY = 'webver';   // 记录本地 web 资源版本（热更新用）
   var QK = 'ykt-state-v1';
 
@@ -235,12 +235,13 @@
   function viewBanks() {
     var banks = window.BANKS.banks || [];
     var ANN = [
+      { d: '2026.11.16', t: '1.2.2更新：修复部分设备更新后题库加载失败的问题' },
       { d: '2026.11.16', t: '1.2.1更新：优化了部分解析内容' },
       { d: '2026.11.12', t: '1.2更新：为每道题添加了解析' }
     ];
     var annBar = '<div class="annbar">' +
       '<button class="annbtn" id="annBtn">' + ICON.bell + '<span>公告</span>' +
-      '<em class="annver">1.2.1</em><i class="annarrow' + (S.annOpen ? ' open' : '') + '">›</i></button>' +
+      '<em class="annver">1.2.2</em><i class="annarrow' + (S.annOpen ? ' open' : '') + '">›</i></button>' +
       (S.annOpen ? '<div class="annpanel">' + ANN.map(function (a) {
         return '<div class="annitem"><b>' + a.d + '</b>　' + esc(a.t) + '</div>';
       }).join('') + '</div>' : '') +
@@ -339,7 +340,26 @@
         var list = filteredIdx();
         if (list.length && list.indexOf(S.idx) < 0) S.idx = list[0];
       }
-    }).catch(function (e) { toast(e.message); });
+    }).catch(function (e) { shardFailed(e); });
+  }
+
+  /* 题库分片加载失败：优先引导用户修复（原生壳可一键修复） */
+  function shardFailed(e) {
+    var msg = (e && e.message) ? e.message : '资源加载失败';
+    if (window.NativeBridge && window.NativeBridge.repair) {
+      dialog('<h3>题库资源缺失</h3>' +
+        '<p>' + esc(msg) + '<br><br>可能是更新时资源没有下载完整。' +
+        '可以点「修复资源」回到内置题库（做题记录不受影响），然后再试一次。</p>' +
+        '<div class="acts"><button class="btn ghost" id="repNo">关闭</button>' +
+        '<button class="btn" id="repYes">修复资源</button></div>');
+      $('repNo').onclick = closeDlg;
+      $('repYes').onclick = function () {
+        closeDlg();
+        try { window.NativeBridge.repair(); } catch (err) { toast('修复失败：' + err.message); }
+      };
+    } else {
+      toast(msg + '（可刷新页面重试）');
+    }
   }
 
   function filteredIdx() {
@@ -1118,7 +1138,10 @@
       '<div class="muted" id="mVerLine" style="margin-bottom:6px">当前版本 v' + APP_VERSION +
       ' · 题库 ' + (window.BANKS.total || 0) + ' 题</div>' +
       '<div class="muted" id="mStoreLine" style="margin-bottom:8px">存储状态：读取中…</div>' +
-      '<button class="btn ghost sm" id="mCheckUpdate">检查更新</button></div>' +
+      '<button class="btn ghost sm" id="mCheckUpdate">检查更新</button>' +
+      (window.NativeBridge && window.NativeBridge.repair
+        ? '<button class="btn ghost sm" id="mRepair" style="margin-top:8px">修复题库资源（加载失败时用）</button>'
+        : '') + '</div>' +
       '<div class="h2">数据备份</div><div class="card">' +
       '<div class="muted" style="margin-bottom:8px">做题记录只存在这台设备的浏览器里。' +
       '无痕模式、清理浏览数据、换浏览器都会让它消失 —— 建议定期导出备份，' +
@@ -1136,6 +1159,17 @@
   }
   function bindMe() {
     if ($('mCheckUpdate')) $('mCheckUpdate').onclick = checkUpdate;
+    if ($('mRepair')) $('mRepair').onclick = function () {
+      dialog('<h3>修复题库资源</h3><p>将清理热更新下载的资源，回到安装包内置题库。' +
+        '<br>做题记录、收藏、笔记都不会受影响。确定修复吗？</p>' +
+        '<div class="acts"><button class="btn ghost" id="rmNo">取消</button>' +
+        '<button class="btn" id="rmYes">修复</button></div>');
+      $('rmNo').onclick = closeDlg;
+      $('rmYes').onclick = function () {
+        closeDlg();
+        try { window.NativeBridge.repair(); } catch (e) { toast('修复失败：' + e.message); }
+      };
+    };
     if ($('mExport')) $('mExport').onclick = downloadBackup;
     if ($('mImport')) $('mImport').onclick = openImport;
     if ($('mStoreLine')) {
